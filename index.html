@@ -9,9 +9,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        /* =================================
-           CSS 부분
-        ================================= */
         body, html {
             height: 100%; margin: 0; overflow: hidden;
             font-family: sans-serif; cursor: default;
@@ -30,8 +27,6 @@
             font-size: 32px; font-weight: bold; line-height: 1; padding: 0 2px;
             font-family: 'Courier New', Courier, monospace;
         }
-
-        /* --- 🔥 'location-btn' 버튼 스타일 --- */
         #location-btn {
             top: 20px; left: 20px;
             background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.3);
@@ -39,10 +34,7 @@
             display: flex; justify-content: center; align-items: center; transition: background 0.2s;
         }
         #location-btn:hover { background: rgba(0, 0, 0, 0.7); }
-        #location-btn svg { width: 24px; height: 24px; fill: white; }
         #location-btn.active { background-color: #007bff; border-color: #007bff; }
-
-        /* --- 나머지 스타일 (이전과 동일) --- */
         #image-bar-wrapper {
             position: absolute; bottom: 20px; left: 50%;
             transform: translateX(-50%); z-index: 10;
@@ -111,67 +103,50 @@
     <input type="file" id="image-uploader" accept="image/*" style="display: none;">
     <img id="custom-cursor-img" src="" alt="커서 이미지">
 
-
     <script>
-    /* =================================
-       JavaScript 부분
-    ================================= */
-    
-    // --- 🔥 'location-btn'을 포함한 전역 변수 선언 ---
-    const clockHourEl = document.getElementById('hour1');
-    const clockMinuteEl = document.getElementById('minute1');
-    const locationBtn = document.getElementById('location-btn'); // 버튼 선택
-    const imageBarWrapper = document.getElementById('image-bar-wrapper');
-    const imageUploader = document.getElementById('image-uploader');
-    const customCursorImg = document.getElementById('custom-cursor-img');
-    const MAX_IMAGES = 5;
+        // 전역 변수 선언
+        const clockHourEl = document.getElementById('hour1');
+        const clockMinuteEl = document.getElementById('minute1');
+        const locationBtn = document.getElementById('location-btn');
+        const imageBarWrapper = document.getElementById('image-bar-wrapper');
+        const imageUploader = document.getElementById('image-uploader');
+        const customCursorImg = document.getElementById('custom-cursor-img');
+        const MAX_IMAGES = 5;
+        let map, userMarker, geolocationWatchId = null, currentSelectedImage = null;
 
-    let map;
-    let userMarker;
-    let geolocationWatchId = null;
-    let currentSelectedImage = null;
+        // --- 🔥 1. 시계 관련 함수 (버그 수정됨) ---
+        function initializeClock(timeZone) {
+            const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: timeZone,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+            const currentDate = dateFormatter.format(new Date()); // 예: "2025-10-08"
+            const storageKey = `randomTimeData_${timeZone}`;
+            const storedData = JSON.parse(localStorage.getItem(storageKey));
+            let randomTime;
 
-    // (다른 모든 JavaScript 코드는 이전과 동일합니다)
-
-    // --- 🔥 'location-btn' 이벤트 리스너 ---
-    locationBtn.addEventListener('click', () => {
-        if (geolocationWatchId) { // 추적 중이면 중지
-            navigator.geolocation.clearWatch(geolocationWatchId);
-            geolocationWatchId = null;
-            locationBtn.classList.remove('active');
-            if (userMarker) {
-                map.removeLayer(userMarker);
-                userMarker = null;
-            }
-            alert('위치 추적을 중지했습니다.');
-        } else { // 추적 시작
-            if (navigator.geolocation) {
-                alert('실시간 위치 추적을 시작합니다.');
-                locationBtn.classList.add('active');
-                geolocationWatchId = navigator.geolocation.watchPosition((position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    const userLocation = [lat, lng];
-                    
-                    if (!userMarker) {
-                        userMarker = L.marker(userLocation).addTo(map).bindPopup("현재 위치").openPopup();
-                    } else {
-                        userMarker.setLatLng(userLocation);
-                    }
-                    map.setView(userLocation, 16);
-                }, (error) => {
-                    console.error("Geolocation 오류:", error);
-                    alert("현재 위치를 가져올 수 없습니다. 권한을 확인해주세요.");
-                    locationBtn.classList.remove('active');
-                }, { enableHighAccuracy: true });
+            if (!storedData || storedData.date !== currentDate) {
+                // 저장된 데이터가 없거나, 저장된 날짜가 오늘과 다르면
+                const randomHour = Math.floor(Math.random() * 24);
+                const randomMinute = Math.floor(Math.random() * 60);
+                const format = num => num.toString().padStart(2, '0');
+                randomTime = `${format(randomHour)}:${format(randomMinute)}`;
+                
+                // 🔥 수정된 부분: currentDate를 함께 정확히 저장합니다.
+                localStorage.setItem(storageKey, JSON.stringify({ time: randomTime, date: currentDate }));
             } else {
-                alert("이 브라우저에서는 Geolocation이 지원되지 않습니다.");
+                // 저장된 날짜가 오늘과 같으면, 기존 시간을 사용
+                randomTime = storedData.time;
             }
+            const [hour, minute] = randomTime.split(':');
+            clockHourEl.textContent = hour;
+            clockMinuteEl.textContent = minute;
         }
-    });
 
-    // (여기에 나머지 모든 JavaScript 코드가 들어갑니다)
-    function initializeClock(e){const t=new Intl.DateTimeFormat("en-CA",{timeZone:e,year:"numeric",month:"2-digit",day:"2-digit"}),o=t.format(new Date),a=`randomTimeData_${e}`,r=JSON.parse(localStorage.getItem(a));let n;if(r&&r.date===o)n=r.time;else{const t=Math.floor(24*Math.random()),o=Math.floor(60*Math.random()),r=e=>e.toString().padStart(2,"0");n=`${r(t)}:${r(o)}`,localStorage.setItem(a,JSON.stringify({time:n,date:o}))}const[i,s]=n.split(":");clockHourEl.textContent=i,clockMinuteEl.textContent=s}function initMap(){map=L.map("map").setView([37.566826,126.9786567],10),L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map),map.on("click",e=>{currentSelectedImage&&placeImageMarker(e.latlng,currentSelectedImage)}),loadAndRenderImageMarkers()}function loadSavedImages(){return JSON.parse(localStorage.getItem("savedImages"))||[]}function saveSavedImages(e){localStorage.setItem("savedImages",JSON.stringify(e))}function renderImageBar(){imageBarWrapper.innerHTML="";const e=loadSavedImages();e.forEach((t,o)=>{const a=document.createElement("div");a.className="image-slot",a.innerHTML=`\n                    <img src="${t}" alt="저장된 이미지 ${o+1}">\n                    <div class="delete-icon" title="삭제">X</div>\n                `,a.addEventListener("click",()=>{selectImageForCursor(t,a)}),a.querySelector(".delete-icon").addEventListener("click",a=>{a.stopPropagation(),confirm("이 이미지를 삭제하시겠습니까?")&&(e.splice(o,1),saveSavedImages(e),renderImageBar(),resetImageCursor())}),imageBarWrapper.appendChild(a)}),e.length<MAX_IMAGES&&(()=>{const e=document.createElement("button");e.className="add-image-btn",e.textContent="+",e.title="이미지 추가",e.addEventListener("click",()=>{imageUploader.click()}),imageBarWrapper.appendChild(e)})()}imageUploader.addEventListener("change",e=>{const t=e.target.files[0];if(t){const o=new FileReader;o.onload=t=>{const o=loadSavedImages();o.length<MAX_IMAGES&&(o.push(t.target.result),saveSavedImages(o),renderImageBar())},o.readAsDataURL(t)}e.target.value=""});function selectImageForCursor(e,t){document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")}),t.classList.add("selected"),currentSelectedImage=e,customCursorImg.src=e,customCursorImg.style.display="block",document.body.classList.add("custom-cursor"),document.addEventListener("mousemove",updateCustomCursorPosition),document.addEventListener("keydown",handleEscKey),document.body.addEventListener("click",handleClickOutsideMap)}function updateCustomCursorPosition(e){customCursorImg.style.left=`${e.clientX}px`,customCursorImg.style.top=`${e.clientY}px`}function handleEscKey(e){"Escape"===e.key&&resetImageCursor()}function handleClickOutsideMap(e){map.getContainer().contains(e.target)||imageBarWrapper.contains(e.target)||e.target.closest("#location-btn")||resetImageCursor()}function resetImageCursor(){currentSelectedImage=null,customCursorImg.src="",customCursorImg.style.display="none",document.body.classList.remove("custom-cursor"),document.removeEventListener("mousemove",updateCustomCursorPosition),document.removeEventListener("keydown",handleEscKey),document.body.removeEventListener("click",handleClickOutsideMap),document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")})}function placeImageMarker(e,t){const o=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];o.push({lat:e.lat,lng:e.lng,img:t}),localStorage.setItem("imageMapMarkers",JSON.stringify(o)),renderImageMarkers(),resetImageCursor()}function renderImageMarkers(){map&&map.imageMarkerLayers&&map.imageMarkerLayers.forEach(e=>map.removeLayer(e)),map.imageMarkerLayers=[];const e=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];e.forEach((t,o)=>{const a=`\n                    <div class="image-map-marker" style="background-image: url('${t.img}');">\n                        <div class="delete-marker-icon" data-index="${o}" title="마커 삭제">X</div>\n                    </div>\n                `,r=L.divIcon({html:a,className:"custom-image-icon",iconSize:[60,60],iconAnchor:[30,30]}),n=L.marker([t.lat,t.lng],{icon:r}).addTo(map);map.imageMarkerLayers.push(n),n.getElement().querySelector(".delete-marker-icon").addEventListener("click",t=>{t.stopPropagation(),confirm("이 이미지 마커를 지도에서 삭제하시겠습니까?")&&deleteImageMarker(o)})})}function deleteImageMarker(e){let t=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];t.splice(e,1),localStorage.setItem("imageMapMarkers",JSON.stringify(t)),renderImageMarkers()}function loadAndRenderImageMarkers(){map&&renderImageMarkers()}document.addEventListener("DOMContentLoaded",()=>{initMap(),initializeClock("Asia/Seoul"),renderImageBar()});
+        // --- (이하 나머지 코드는 이전과 동일합니다) ---
+        function initMap(){map=L.map("map").setView([37.566826,126.9786567],10),L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map),map.on("click",e=>{currentSelectedImage&&placeImageMarker(e.latlng,currentSelectedImage)}),loadAndRenderImageMarkers()}locationBtn.addEventListener("click",()=>{geolocationWatchId?(navigator.geolocation.clearWatch(geolocationWatchId),geolocationWatchId=null,locationBtn.classList.remove("active"),userMarker&&(map.removeLayer(userMarker),userMarker=null),alert("위치 추적을 중지했습니다.")):navigator.geolocation?(alert("실시간 위치 추적을 시작합니다."),locationBtn.classList.add("active"),geolocationWatchId=navigator.geolocation.watchPosition(e=>{const t=e.coords.latitude,o=e.coords.longitude,a=[t,o];userMarker?userMarker.setLatLng(a):userMarker=L.marker(a).addTo(map).bindPopup("현재 위치").openPopup(),map.setView(a,16)},e=>{console.error("Geolocation 오류:",e),alert("현재 위치를 가져올 수 없습니다. 권한을 확인해주세요."),locationBtn.classList.remove("active")},{enableHighAccuracy:!0})):alert("이 브라우저에서는 Geolocation이 지원되지 않습니다.")});function loadSavedImages(){return JSON.parse(localStorage.getItem("savedImages"))||[]}function saveSavedImages(e){localStorage.setItem("savedImages",JSON.stringify(e))}function renderImageBar(){imageBarWrapper.innerHTML="";const e=loadSavedImages();e.forEach((t,o)=>{const a=document.createElement("div");a.className="image-slot",a.innerHTML=`\n                    <img src="${t}" alt="저장된 이미지 ${o+1}">\n                    <div class="delete-icon" title="삭제">X</div>\n                `,a.addEventListener("click",()=>{selectImageForCursor(t,a)}),a.querySelector(".delete-icon").addEventListener("click",a=>{a.stopPropagation(),confirm("이 이미지를 삭제하시겠습니까?")&&(e.splice(o,1),saveSavedImages(e),renderImageBar(),resetImageCursor())}),imageBarWrapper.appendChild(a)}),e.length<MAX_IMAGES&&(()=>{const e=document.createElement("button");e.className="add-image-btn",e.textContent="+",e.title="이미지 추가",e.addEventListener("click",()=>{imageUploader.click()}),imageBarWrapper.appendChild(e)})()}imageUploader.addEventListener("change",e=>{const t=e.target.files[0];if(t){const o=new FileReader;o.onload=t=>{const o=loadSavedImages();o.length<MAX_IMAGES&&(o.push(t.target.result),saveSavedImages(o),renderImageBar())},o.readAsDataURL(t)}e.target.value=""});function selectImageForCursor(e,t){document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")}),t.classList.add("selected"),currentSelectedImage=e,customCursorImg.src=e,customCursorImg.style.display="block",document.body.classList.add("custom-cursor"),document.addEventListener("mousemove",updateCustomCursorPosition),document.addEventListener("keydown",handleEscKey),document.body.addEventListener("click",handleClickOutsideMap)}function updateCustomCursorPosition(e){customCursorImg.style.left=`${e.clientX}px`,customCursorImg.style.top=`${e.clientY}px`}function handleEscKey(e){"Escape"===e.key&&resetImageCursor()}function handleClickOutsideMap(e){map.getContainer().contains(e.target)||imageBarWrapper.contains(e.target)||e.target.closest("#location-btn")||resetImageCursor()}function resetImageCursor(){currentSelectedImage=null,customCursorImg.src="",customCursorImg.style.display="none",document.body.classList.remove("custom-cursor"),document.removeEventListener("mousemove",updateCustomCursorPosition),document.removeEventListener("keydown",handleEscKey),document.body.removeEventListener("click",handleClickOutsideMap),document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")})}function placeImageMarker(e,t){const o=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];o.push({lat:e.lat,lng:e.lng,img:t}),localStorage.setItem("imageMapMarkers",JSON.stringify(o)),renderImageMarkers()}function renderImageMarkers(){map&&map.imageMarkerLayers&&map.imageMarkerLayers.forEach(e=>map.removeLayer(e)),map.imageMarkerLayers=[];const e=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];e.forEach((t,o)=>{const a=`\n                    <div class="image-map-marker" style="background-image: url('${t.img}');">\n                        <div class="delete-marker-icon" data-index="${o}" title="마커 삭제">X</div>\n                    </div>\n                `,r=L.divIcon({html:a,className:"custom-image-icon",iconSize:[60,60],iconAnchor:[30,30]}),n=L.marker([t.lat,t.lng],{icon:r}).addTo(map);map.imageMarkerLayers.push(n),n.getElement().querySelector(".delete-marker-icon").addEventListener("click",t=>{t.stopPropagation(),confirm("이 이미지 마커를 지도에서 삭제하시겠습니까?")&&deleteImageMarker(o)})})}function deleteImageMarker(e){let t=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];t.splice(e,1),localStorage.setItem("imageMapMarkers",JSON.stringify(t)),renderImageMarkers()}function loadAndRenderImageMarkers(){map&&renderImageMarkers()}document.addEventListener("DOMContentLoaded",()=>{initMap(),initializeClock("Asia/Seoul"),renderImageBar()});
     </script>
 </body>
 </html>
