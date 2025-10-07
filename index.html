@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>지도 위 랜덤 시간 & 이미지 마커</title>
+    <title>시간 기록 지도</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -27,14 +27,6 @@
             font-size: 32px; font-weight: bold; line-height: 1; padding: 0 2px;
             font-family: 'Courier New', Courier, monospace;
         }
-        #location-btn {
-            top: 20px; left: 20px;
-            background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%; width: 48px; height: 48px; cursor: pointer;
-            display: flex; justify-content: center; align-items: center; transition: background 0.2s;
-        }
-        #location-btn:hover { background: rgba(0, 0, 0, 0.7); }
-        #location-btn.active { background-color: #007bff; border-color: #007bff; }
         #image-bar-wrapper {
             position: absolute; bottom: 20px; left: 50%;
             transform: translateX(-50%); z-index: 10;
@@ -51,13 +43,14 @@
         .image-slot.selected {
             border-color: #007bff; box-shadow: 0 0 10px rgba(0, 123, 255, 0.8);
         }
-        .add-image-btn {
-            width: 70px; height: 70px; border: 2px dashed rgba(255, 255, 255, 0.5); background-color: transparent;
+        .add-image-label {
+            width: 70px; height: 70px;
+            border: 2px dashed rgba(255, 255, 255, 0.5); background-color: transparent;
             color: rgba(255, 255, 255, 0.7); border-radius: 8px; font-size: 40px;
             cursor: pointer; display: flex; justify-content: center; align-items: center;
             transition: all 0.2s;
         }
-        .add-image-btn:hover { background-color: rgba(255, 255, 255, 0.1); color: white; }
+        .add-image-label:hover { background-color: rgba(255, 255, 255, 0.1); color: white; }
         .image-slot .delete-icon {
             position: absolute; top: 4px; right: 4px; background-color: rgba(255, 0, 0, 0.8); color: white;
             font-size: 14px; width: 20px; height: 20px; border-radius: 50%;
@@ -71,10 +64,28 @@
             width: 60px; height: 60px; object-fit: contain;
             transform: translate(-50%, -50%); display: none;
         }
+
+        /* --- 🔥 지도 마커 스타일 수정 --- */
+        .image-marker-container {
+            text-align: center;
+        }
         .image-map-marker {
-            width: 60px; height: 60px; background-size: contain; background-repeat: no-repeat;
-            background-position: center; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            width: 60px; height: 60px;
+            background-size: contain; background-repeat: no-repeat;
+            background-position: center; border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
             cursor: pointer; position: relative;
+        }
+        .marker-timestamp {
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 12px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            /* 위치를 이미지 아래로 조정 */
+            position: relative;
+            top: 2px;
+            white-space: nowrap; /* 시간이 한 줄로 보이도록 */
         }
         .image-map-marker .delete-marker-icon {
             position: absolute; top: -8px; right: -8px; background-color: rgba(255, 0, 0, 0.8);
@@ -83,70 +94,117 @@
             visibility: hidden; opacity: 0; transition: opacity 0.2s;
         }
         .image-map-marker:hover .delete-marker-icon { visibility: visible; opacity: 1; }
+        .visually-hidden {
+            position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+            overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
+        }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
-
     <div id="clock-wrapper" class="ui-element">
         <span class="mini-digit" id="hour1">00</span>
         <span class="mini-colon">:</span>
         <span class="mini-digit" id="minute1">00</span>
     </div>
-
-    <button id="location-btn" title="내 위치 추적">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-    </button>
-    
     <div id="image-bar-wrapper"></div>
-    <input type="file" id="image-uploader" accept="image/*" style="display: none;">
+    <input type="file" id="image-uploader" class="visually-hidden" accept="image/*">
     <img id="custom-cursor-img" src="" alt="커서 이미지">
 
     <script>
-        // 전역 변수 선언
-        const clockHourEl = document.getElementById('hour1');
-        const clockMinuteEl = document.getElementById('minute1');
-        const locationBtn = document.getElementById('location-btn');
-        const imageBarWrapper = document.getElementById('image-bar-wrapper');
-        const imageUploader = document.getElementById('image-uploader');
-        const customCursorImg = document.getElementById('custom-cursor-img');
-        const MAX_IMAGES = 5;
-        let map, userMarker, geolocationWatchId = null, currentSelectedImage = null;
+        const clockHourEl = document.getElementById('hour1'), clockMinuteEl = document.getElementById('minute1'), imageBarWrapper = document.getElementById('image-bar-wrapper'), imageUploader = document.getElementById('image-uploader'), customCursorImg = document.getElementById('custom-cursor-img'), MAX_IMAGES = 5;
+        let map, userMarker, currentSelectedImage = null;
 
-        // --- 🔥 1. 시계 관련 함수 (버그 수정됨) ---
-        function initializeClock(timeZone) {
-            const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-                timeZone: timeZone,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit'
+        // 시계, 지도 관련 함수 (이전과 동일)
+        function initializeClock(e){const t=new Intl.DateTimeFormat("en-CA",{timeZone:e,year:"numeric",month:"2-digit",day:"2-digit"}),o=t.format(new Date),a=`randomTimeData_${e}`,r=JSON.parse(localStorage.getItem(a));let n;if(r&&r.date===o)n=r.time;else{const t=Math.floor(24*Math.random()),o=Math.floor(60*Math.random()),r=e=>e.toString().padStart(2,"0");n=`${r(t)}:${r(o)}`,localStorage.setItem(a,JSON.stringify({time:n,date:o}))}const[i,s]=n.split(":");clockHourEl.textContent=i,clockMinuteEl.textContent=s}
+        function initMap(){map=L.map("map").setView([37.566826,126.9786567],10),L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map),map.on("click",e=>{currentSelectedImage&&placeImageMarker(e.latlng,currentSelectedImage)}),loadAndRenderImageMarkers()}
+
+        // 자동 위치 추적 함수
+        function startAutoTracking(){navigator.geolocation&&navigator.geolocation.watchPosition(e=>{const t=e.coords.latitude,o=e.coords.longitude,a=[t,o];userMarker?userMarker.setLatLng(a):userMarker=L.marker(a).addTo(map).bindPopup("현재 위치").openPopup(),map.panTo(a)},e=>{console.error("Geolocation 오류:",e.message)},{enableHighAccuracy:!0,maximumAge:0,timeout:5e3})}
+        
+        // 이미지 바, 커서 관련 함수들 (이전과 동일)
+        function loadSavedImages(){return JSON.parse(localStorage.getItem("savedImages"))||[]}
+        function saveSavedImages(e){localStorage.setItem("savedImages",JSON.stringify(e))}
+        function renderImageBar(){imageBarWrapper.innerHTML="";const e=loadSavedImages();e.forEach((t,o)=>{const a=document.createElement("div");a.className="image-slot",a.innerHTML=`<img src="${t}" alt="저장된 이미지 ${o+1}"><div class="delete-icon" title="삭제">X</div>`,a.addEventListener("click",()=>{selectImageForCursor(t,a)}),a.querySelector(".delete-icon").addEventListener("click",e=>{e.stopPropagation(),confirm("이 이미지를 삭제하시겠습니까?")&&(images.splice(o,1),saveSavedImages(images),renderImageBar(),resetImageCursor())}),imageBarWrapper.appendChild(a)}),e.length<MAX_IMAGES&&(()=>{const e=document.createElement("label");e.className="add-image-label",e.htmlFor="image-uploader",e.textContent="+",e.title="이미지 추가",imageBarWrapper.appendChild(e)})()}
+        function handleFileSelect(event){const file=event.target.files[0];if(!file){return}const reader=new FileReader;reader.onload=function(e){const images=loadSavedImages();if(images.length<MAX_IMAGES){images.push(e.target.result);saveSavedImages(images);renderImageBar()}};reader.readAsDataURL(file);event.target.value=""}
+        imageUploader.addEventListener("change",handleFileSelect);
+        function selectImageForCursor(e,t){document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")}),t.classList.add("selected"),currentSelectedImage=e,customCursorImg.src=e,customCursorImg.style.display="block",document.body.classList.add("custom-cursor"),document.addEventListener("mousemove",updateCustomCursorPosition),document.addEventListener("keydown",handleEscKey),document.body.addEventListener("click",handleClickOutsideMap)}
+        function updateCustomCursorPosition(e){customCursorImg.style.left=`${e.clientX}px`,customCursorImg.style.top=`${e.clientY}px`}
+        function handleEscKey(e){"Escape"===e.key&&resetImageCursor()}
+        function handleClickOutsideMap(e){map.getContainer().contains(e.target)||imageBarWrapper.contains(e.target)||resetImageCursor()}
+        function resetImageCursor(){currentSelectedImage=null,customCursorImg.src="",customCursorImg.style.display="none",document.body.classList.remove("custom-cursor"),document.removeEventListener("mousemove",updateCustomCursorPosition),document.removeEventListener("keydown",handleEscKey),document.removeEventListener("click",handleClickOutsideMap),document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")})}
+
+        // --- 🔥 마커 관련 함수 (수정됨) ---
+        function placeImageMarker(latlng, imgData) {
+            const imageMarkers = JSON.parse(localStorage.getItem('imageMapMarkers')) || [];
+            // 현재 시간을 HH:MM 형식으로 가져오기
+            const now = new Date();
+            const timestamp = now.toTimeString().substring(0, 5); // 예: "14:30"
+            
+            imageMarkers.push({
+                lat: latlng.lat,
+                lng: latlng.lng,
+                img: imgData,
+                time: timestamp // 시간 정보 추가
             });
-            const currentDate = dateFormatter.format(new Date()); // 예: "2025-10-08"
-            const storageKey = `randomTimeData_${timeZone}`;
-            const storedData = JSON.parse(localStorage.getItem(storageKey));
-            let randomTime;
-
-            if (!storedData || storedData.date !== currentDate) {
-                // 저장된 데이터가 없거나, 저장된 날짜가 오늘과 다르면
-                const randomHour = Math.floor(Math.random() * 24);
-                const randomMinute = Math.floor(Math.random() * 60);
-                const format = num => num.toString().padStart(2, '0');
-                randomTime = `${format(randomHour)}:${format(randomMinute)}`;
-                
-                // 🔥 수정된 부분: currentDate를 함께 정확히 저장합니다.
-                localStorage.setItem(storageKey, JSON.stringify({ time: randomTime, date: currentDate }));
-            } else {
-                // 저장된 날짜가 오늘과 같으면, 기존 시간을 사용
-                randomTime = storedData.time;
-            }
-            const [hour, minute] = randomTime.split(':');
-            clockHourEl.textContent = hour;
-            clockMinuteEl.textContent = minute;
+            localStorage.setItem('imageMapMarkers', JSON.stringify(imageMarkers));
+            renderImageMarkers();
         }
 
-        // --- (이하 나머지 코드는 이전과 동일합니다) ---
-        function initMap(){map=L.map("map").setView([37.566826,126.9786567],10),L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map),map.on("click",e=>{currentSelectedImage&&placeImageMarker(e.latlng,currentSelectedImage)}),loadAndRenderImageMarkers()}locationBtn.addEventListener("click",()=>{geolocationWatchId?(navigator.geolocation.clearWatch(geolocationWatchId),geolocationWatchId=null,locationBtn.classList.remove("active"),userMarker&&(map.removeLayer(userMarker),userMarker=null),alert("위치 추적을 중지했습니다.")):navigator.geolocation?(alert("실시간 위치 추적을 시작합니다."),locationBtn.classList.add("active"),geolocationWatchId=navigator.geolocation.watchPosition(e=>{const t=e.coords.latitude,o=e.coords.longitude,a=[t,o];userMarker?userMarker.setLatLng(a):userMarker=L.marker(a).addTo(map).bindPopup("현재 위치").openPopup(),map.setView(a,16)},e=>{console.error("Geolocation 오류:",e),alert("현재 위치를 가져올 수 없습니다. 권한을 확인해주세요."),locationBtn.classList.remove("active")},{enableHighAccuracy:!0})):alert("이 브라우저에서는 Geolocation이 지원되지 않습니다.")});function loadSavedImages(){return JSON.parse(localStorage.getItem("savedImages"))||[]}function saveSavedImages(e){localStorage.setItem("savedImages",JSON.stringify(e))}function renderImageBar(){imageBarWrapper.innerHTML="";const e=loadSavedImages();e.forEach((t,o)=>{const a=document.createElement("div");a.className="image-slot",a.innerHTML=`\n                    <img src="${t}" alt="저장된 이미지 ${o+1}">\n                    <div class="delete-icon" title="삭제">X</div>\n                `,a.addEventListener("click",()=>{selectImageForCursor(t,a)}),a.querySelector(".delete-icon").addEventListener("click",a=>{a.stopPropagation(),confirm("이 이미지를 삭제하시겠습니까?")&&(e.splice(o,1),saveSavedImages(e),renderImageBar(),resetImageCursor())}),imageBarWrapper.appendChild(a)}),e.length<MAX_IMAGES&&(()=>{const e=document.createElement("button");e.className="add-image-btn",e.textContent="+",e.title="이미지 추가",e.addEventListener("click",()=>{imageUploader.click()}),imageBarWrapper.appendChild(e)})()}imageUploader.addEventListener("change",e=>{const t=e.target.files[0];if(t){const o=new FileReader;o.onload=t=>{const o=loadSavedImages();o.length<MAX_IMAGES&&(o.push(t.target.result),saveSavedImages(o),renderImageBar())},o.readAsDataURL(t)}e.target.value=""});function selectImageForCursor(e,t){document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")}),t.classList.add("selected"),currentSelectedImage=e,customCursorImg.src=e,customCursorImg.style.display="block",document.body.classList.add("custom-cursor"),document.addEventListener("mousemove",updateCustomCursorPosition),document.addEventListener("keydown",handleEscKey),document.body.addEventListener("click",handleClickOutsideMap)}function updateCustomCursorPosition(e){customCursorImg.style.left=`${e.clientX}px`,customCursorImg.style.top=`${e.clientY}px`}function handleEscKey(e){"Escape"===e.key&&resetImageCursor()}function handleClickOutsideMap(e){map.getContainer().contains(e.target)||imageBarWrapper.contains(e.target)||e.target.closest("#location-btn")||resetImageCursor()}function resetImageCursor(){currentSelectedImage=null,customCursorImg.src="",customCursorImg.style.display="none",document.body.classList.remove("custom-cursor"),document.removeEventListener("mousemove",updateCustomCursorPosition),document.removeEventListener("keydown",handleEscKey),document.body.removeEventListener("click",handleClickOutsideMap),document.querySelectorAll(".image-slot.selected").forEach(e=>{e.classList.remove("selected")})}function placeImageMarker(e,t){const o=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];o.push({lat:e.lat,lng:e.lng,img:t}),localStorage.setItem("imageMapMarkers",JSON.stringify(o)),renderImageMarkers()}function renderImageMarkers(){map&&map.imageMarkerLayers&&map.imageMarkerLayers.forEach(e=>map.removeLayer(e)),map.imageMarkerLayers=[];const e=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];e.forEach((t,o)=>{const a=`\n                    <div class="image-map-marker" style="background-image: url('${t.img}');">\n                        <div class="delete-marker-icon" data-index="${o}" title="마커 삭제">X</div>\n                    </div>\n                `,r=L.divIcon({html:a,className:"custom-image-icon",iconSize:[60,60],iconAnchor:[30,30]}),n=L.marker([t.lat,t.lng],{icon:r}).addTo(map);map.imageMarkerLayers.push(n),n.getElement().querySelector(".delete-marker-icon").addEventListener("click",t=>{t.stopPropagation(),confirm("이 이미지 마커를 지도에서 삭제하시겠습니까?")&&deleteImageMarker(o)})})}function deleteImageMarker(e){let t=JSON.parse(localStorage.getItem("imageMapMarkers"))||[];t.splice(e,1),localStorage.setItem("imageMapMarkers",JSON.stringify(t)),renderImageMarkers()}function loadAndRenderImageMarkers(){map&&renderImageMarkers()}document.addEventListener("DOMContentLoaded",()=>{initMap(),initializeClock("Asia/Seoul"),renderImageBar()});
+        function renderImageMarkers() {
+            if (map && map.imageMarkerLayers) {
+                map.imageMarkerLayers.forEach(layer => map.removeLayer(layer));
+            }
+            map.imageMarkerLayers = [];
+
+            const imageMarkers = JSON.parse(localStorage.getItem('imageMapMarkers')) || [];
+            imageMarkers.forEach((markerData, index) => {
+                // 아이콘 HTML에 시간 표시 부분 추가
+                const iconHtml = `
+                    <div class="image-marker-container">
+                        <div class="image-map-marker" style="background-image: url('${markerData.img}');">
+                            <div class="delete-marker-icon" data-index="${index}" title="마커 삭제">X</div>
+                        </div>
+                        <div class="marker-timestamp">${markerData.time}</div>
+                    </div>
+                `;
+                const customIcon = L.divIcon({
+                    html: iconHtml,
+                    className: 'custom-image-icon-wrapper', // wrapper 클래스
+                    iconSize: [60, 75], // 이미지와 시간 영역을 포함한 전체 크기
+                    iconAnchor: [30, 75] // 아이콘의 가장 아래 중앙을 기준으로 위치 잡기
+                });
+
+                const marker = L.marker([markerData.lat, markerData.lng], { icon: customIcon }).addTo(map);
+                map.imageMarkerLayers.push(marker);
+
+                marker.getElement().querySelector('.delete-marker-icon').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm('이 이미지 마커를 지도에서 삭제하시겠습니까?')) {
+                        deleteImageMarker(index);
+                    }
+                });
+            });
+        }
+
+        function deleteImageMarker(indexToDelete) {
+            let imageMarkers = JSON.parse(localStorage.getItem('imageMapMarkers')) || [];
+            imageMarkers.splice(indexToDelete, 1);
+            localStorage.setItem('imageMapMarkers', JSON.stringify(imageMarkers));
+            renderImageMarkers();
+        }
+
+        function loadAndRenderImageMarkers() {
+            if (map) renderImageMarkers();
+        }
+        
+        document.addEventListener("DOMContentLoaded",()=>{
+            initMap();
+            initializeClock("Asia/Seoul");
+            renderImageBar();
+            startAutoTracking();
+        });
     </script>
 </body>
 </html>
